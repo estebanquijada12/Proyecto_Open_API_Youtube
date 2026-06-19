@@ -1,0 +1,381 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "API 3 - Descubrimiento y Personalización",
+    "version": "1.0.0",
+    "description": "Servicio de dominio encargado de ayudar al usuario a encontrar contenido relevante a través de búsquedas, feeds y recomendaciones. No toma decisiones de visibilidad ni aloja metadata maestra.\n\n**Eventos Consumidos:** ContenidoPublicado, ContenidoDespublicado, ContenidoRestringido (desde Catálogo); EngagementRegistrado (desde Audiencia); SesionPlaybackFinalizada (desde Publicación).\n**Eventos Emitidos:** BusquedaRealizada, SenalInteresRegistrada."
+  },
+  "servers": [
+    {
+      "url": "https://api.youtube-clone.local/v1/discovery"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    
+    "/feed/home" : {
+      "x-scope": "Sí: home feed",
+      
+      "get": {
+        "summary": "Obtiene el feed personalizado del usuario",
+        "description": "Retorna una lista paginada de DiscoveryItems recomendados. La identidad del usuario se infiere exclusivamente del token JWT.",
+
+        "parameters": [
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "$ref": "#/components/parameters/OffsetParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feed personalizado generado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DiscoveryItemList" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/search": {
+      "x-scope": "Sí: search",
+      "get": {
+        "summary": "Busca contenido indexado (videos y canales)",
+        "description": "Permite realizar búsquedas por texto libre aplicando filtros técnicos y ordenamientos específicos.",
+
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["ITEM", "CHANNEL"], "default": "ITEM" }
+          },
+          {
+            "name": "duration",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["SHORT", "MEDIUM", "LONG"] }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["RELEVANCE", "DATE", "POPULARITY"], "default": "RELEVANCE" }
+          },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "$ref": "#/components/parameters/OffsetParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultados de búsqueda obtenidos correctamente",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DiscoveryItemList" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/search/suggestions": {
+      "x-scope": "Sí: search",
+      "get": {
+        "summary": "Obtiene sugerencias de búsqueda en tiempo real",
+        "description": "Devuelve términos de búsqueda sugeridos basados en caracteres parciales.",
+
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de sugerencias obtenida",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SuggestionList" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" }
+        }
+      }
+    },
+    "/catalog-items/{catalogReferenceId}/related": {
+      "x-scope": "Sí: related",
+      "get": {
+        "summary": "Obtiene contenido relacionado",
+        "description": "Retorna ítems de catálogo similares basados en temáticas, historial y engagement del contexto.",
+
+        "parameters": [
+          {
+            "name": "catalogReferenceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "$ref": "#/components/parameters/OffsetParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de contenido relacionado obtenida",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DiscoveryItemList" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/trending": {
+      "x-scope": "Sí: trending",
+      "get": {
+        "summary": "Expone el contenido en tendencia",
+        "description": "Calcula y segmenta los videos con mayor aceleración de engagement por región geográfica o categoría.",
+
+        "parameters": [
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "maxLength": 2 }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "$ref": "#/components/parameters/OffsetParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de tendencias recuperada",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DiscoveryItemList" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+
+    "/categories": {
+      "x-scope": "Sí: explorar por categoría",
+      "get": {
+        "summary": "Listar categorías de contenido disponibles",
+        "description": "Devuelve las categorías y temas que el usuario puede explorar.",
+        "responses": {
+          "200": {
+            "description": "Lista de categorías obtenida",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CategoryList" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/categories/{categoryId}/items": {
+      "x-scope": "Sí: explorar por categoría",
+      "get": {
+        "summary": "Explorar contenido dentro de una categoría",
+        "description": "Recupera ítems de contenido asociados a una categoría o tema con paginación.",
+        "parameters": [
+          {
+            "name": "categoryId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "$ref": "#/components/parameters/OffsetParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contenido de categoría recuperado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DiscoveryItemList" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    
+    "/signals": {
+      "x-scope": "Sí: señales de ranking",
+      "post": {
+        "summary": "Registra una señal de telemetría e interés",
+        "description": "Captura impresiones, clicks o tiempo de visualización. Emite de forma asíncrona el evento SenalInteresRegistrada.",
+
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SignalPayload" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Señal aceptada de manera asíncrona para actualizar el perfil latente"
+          },
+          "400": { "$ref": "#/components/responses/BadRequestError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "LimitParam": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "default": 20 }
+      },
+      "OffsetParam": {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "default": 0 }
+      }
+    },
+    "schemas": {
+      "DiscoveryItem": {
+        "type": "object",
+        "properties": {
+          "discoveryId": { "type": "string", "format": "uuid" },
+          "catalogReferenceId": { "type": "string", "format": "uuid" },
+          "titleSnippet": { "type": "string" },
+          "channelReferenceId": { "type": "string", "format": "uuid" },
+          "reasoning": { "type": "string" }
+        },
+        "required": ["discoveryId", "catalogReferenceId", "titleSnippet"]
+      },
+      "DiscoveryItemList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DiscoveryItem" }
+          },
+          "limit": { "type": "integer" },
+          "offset": { "type": "integer" },
+          "total": { "type": "integer" }
+        },
+        "required": ["items", "limit", "offset", "total"]
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "categoryId": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" }
+        },
+        "required": ["categoryId", "name"]
+      },
+      "CategoryList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Category" }
+          },
+          "limit": { "type": "integer" },
+          "offset": { "type": "integer" },
+          "total": { "type": "integer" }
+        },
+        "required": ["items", "limit", "offset", "total"]
+      },
+      "SuggestionList": {
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["suggestions"]
+      },
+      "SignalPayload": {
+        "type": "object",
+        "properties": {
+          "catalogReferenceId": { "type": "string", "format": "uuid" },
+          "signalType": { "type": "string", "enum": ["IMPRESSION", "CLICK", "WATCH_TIME"] },
+          "value": { "type": "number", "description": "Tiempo de visualización en segundos para tipo WATCH_TIME" }
+        },
+        "required": ["catalogReferenceId", "signalType"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "required": ["code", "message"]
+      }
+    },
+    "responses": {
+      "BadRequestError": {
+        "description": "Sintaxis incorrecta u omisión de parámetros requeridos",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "UnauthorizedError": {
+        "description": "Falta token JWT, expiró o firma inválida",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "NotFoundError": {
+        "description": "El recurso de referencia no existe en el índice",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      }
+    }
+  }
+}
