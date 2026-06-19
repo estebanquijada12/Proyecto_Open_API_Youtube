@@ -1,0 +1,778 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API de Catálogo Editorial y Derechos (Contexto 2)",
+    "description": "Define qué contenido existe públicamente y bajo qué reglas. \n\n**Integración Asíncrona:** Emite eventos clave hacia Descubrimiento, Monetización y Publicidad. Consume eventos técnicos de la API 1.",
+    "version": "1.2.0"
+  },
+  "servers": [
+    {
+      "url": "/api/v1/catalog"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    { "name": "Channels", "description": "Gestión de canales públicos (RF-C1)" },
+    { "name": "Items", "description": "Creación, edición y publicación de metadata (RF-C2, RF-C3)" },
+    { "name": "Playlists", "description": "Colecciones ordenadas de contenido (RF-C4)" },
+    { "name": "Rights", "description": "Derechos, reclamaciones y restricciones (RF-C5, RF-C6)" }
+  ],
+  "paths": {
+    "/categories": {
+      "get": {
+        "tags": ["Items"],
+        "summary": "Listar categorías editoriales maestras (RF-C2)",
+        "security": [],
+        "operationId": "listCategories",
+        "responses": {
+          "200": {
+            "description": "Lista de categorías disponibles para clasificar contenido",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Category" } }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/channels": {
+      "post": {
+        "tags": ["Channels"],
+        "summary": "Crear un canal (RF-C1)",
+        "description": "**Acceso:** Requiere rol de Usuario Autenticado.",
+        "operationId": "createChannel",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ChannelCreatePayload" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Canal creado exitosamente",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ChannelProfile" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/channels/{channelId}": {
+      "put": {
+        "tags": ["Channels"],
+        "summary": "Actualizar info pública del canal (RF-C1)",
+        "description": "**Acceso:** Propietario del Canal.",
+        "operationId": "updateChannel",
+        "parameters": [
+          { "name": "channelId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ChannelUpdatePayload" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Canal actualizado exitosamente" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "get": {
+        "tags": ["Channels"],
+        "summary": "Consultar perfil de canal (RF-C1)",
+        "security": [],
+        "operationId": "getChannelProfile",
+        "parameters": [
+          { "name": "channelId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metadata pública del canal",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ChannelProfile" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/channels/{channelId}/items": {
+      "get": {
+        "tags": ["Channels", "Items"],
+        "summary": "Listar el contenido publicado de un canal (RF-C1)",
+        "security": [],
+        "operationId": "listChannelItems",
+        "parameters": [
+          { "name": "channelId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 100, "default": 20 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada de items en estado 'published'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogItem" } },
+                    "nextOffset": { "type": "integer", "nullable": true }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/items": {
+      "post": {
+        "tags": ["Items"],
+        "summary": "Crear contenido en estado borrador (RF-C2)",
+        "description": "**Acceso:** Propietario del Canal.",
+        "operationId": "createItemDraft",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ItemDraftPayload" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Borrador creado",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CatalogItem" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/items/{itemId}": {
+      "put": {
+        "tags": ["Items"],
+        "summary": "Editar metadata de contenido existente (RF-C2)",
+        "description": "**Acceso:** Propietario del Canal. **Emite:** `ContenidoActualizadoEvent` si ya estaba publicado.",
+        "operationId": "updateItem",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "If-Match", "in": "header", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ItemUpdatePayload" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Metadata actualizada." },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" },
+          "412": { "description": "Conflicto de concurrencia ETag" }
+        }
+      },
+      "get": {
+        "tags": ["Items"],
+        "summary": "Consultar metadata de un contenido (RF-C2)",
+        "security": [],
+        "operationId": "getItem",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Metadata del ítem.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CatalogItem" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "delete": {
+        "tags": ["Items"],
+        "summary": "Destrucción lógica del catálogo",
+        "description": "**Acceso:** Propietario del Canal o Moderador. **Emite:** `ContenidoEliminadoEvent` para purga técnica en API 1.",
+        "operationId": "deleteItem",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Item eliminado del catálogo" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/items/{itemId}/thumbnail": {
+      "post": {
+        "tags": ["Items"],
+        "summary": "Subir miniatura de contenido (RF-C2)",
+        "description": "**Acceso:** Propietario del Canal. Recibe un archivo binario (JPEG/PNG) de máximo 2MB.",
+        "operationId": "uploadThumbnail",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "image/jpeg": { "schema": { "type": "string", "format": "binary" } },
+            "image/png": { "schema": { "type": "string", "format": "binary" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Miniatura procesada y vinculada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "thumbnailUrl": { "type": "string", "format": "uri" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" },
+          "413": { "description": "El archivo excede el límite de tamaño permitido." }
+        }
+      }
+    },
+    "/items/{itemId}/publish": {
+      "post": {
+        "tags": ["Items"],
+        "summary": "Publicar un contenido (RF-C3)",
+        "description": "**Acceso:** Propietario del Canal. Valida integridad del technicalAssetId. **Emite:** `ContenidoPublicadoEvent`.",
+        "operationId": "publishItem",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Contenido publicado." },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "409": { "description": "Conflicto: technicalAssetId nulo o restricciones bloqueantes." }
+        }
+      }
+    },
+    "/items/{itemId}/unpublish": {
+      "post": {
+        "tags": ["Items"],
+        "summary": "Despublicar u ocultar contenido (RF-C3)",
+        "description": "**Acceso:** Propietario del Canal o Moderador. **Emite:** `ContenidoDespublicadoEvent`.",
+        "operationId": "unpublishItem",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Contenido regresado a estado borrador." },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" }
+        }
+      }
+    },
+    "/items/{itemId}/visibility": {
+      "get": {
+        "tags": ["Items", "Rights"],
+        "summary": "Consultar Veredicto de Visibilidad (RF-C3, RF-C6)",
+        "security": [ { "bearerAuth": [] }, {} ],
+        "description": "**Acceso:** Red interna (API Gateway / CDN) o Cliente Web. Resuelve políticas de acceso.",
+        "operationId": "checkItemVisibility",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado de visibilidad resuelto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "isAllowed": { "type": "boolean" },
+                    "reason": { "type": "string", "example": "blocked_geo_restriction" },
+                    "technicalAssetId": { "type": "string", "nullable": true }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/playlists": {
+      "post": {
+        "tags": ["Playlists"],
+        "summary": "Crear una playlist (RF-C4)",
+        "description": "**Acceso:** Propietario del Canal.",
+        "operationId": "createPlaylist",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PlaylistCreatePayload" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Playlist creada",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Playlist" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" }
+        }
+      }
+    },
+    "/playlists/{playlistId}/items": {
+      "put": {
+        "tags": ["Playlists"],
+        "summary": "Actualizar ítems en una colección (RF-C4)",
+        "description": "**Acceso:** Propietario del Canal.",
+        "operationId": "updatePlaylistItems",
+        "parameters": [
+          { "name": "playlistId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PlaylistItemsUpdatePayload" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Playlist actualizada" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      },
+      "get": {
+        "tags": ["Playlists"],
+        "summary": "Consultar ítems de una playlist (RF-C4)",
+        "security": [],
+        "operationId": "getPlaylistItems",
+        "parameters": [
+          { "name": "playlistId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 200, "default": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista ordenada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogItem" } },
+                    "nextOffset": { "type": "integer", "nullable": true }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/items/{itemId}/claims": {
+      "post": {
+        "tags": ["Rights"],
+        "summary": "Registrar reclamación de derechos (RF-C5)",
+        "description": "**Acceso:** Entidad Autenticada Externa. **Emite:** `ReclamacionDerechosCreadaEvent`.",
+        "operationId": "createClaim",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ClaimCreatePayload" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Reclamación registrada",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CopyrightClaim" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "get": {
+        "tags": ["Rights"],
+        "summary": "Consultar historial de reclamaciones (RF-C5)",
+        "description": "**Acceso:** Propietario del Canal o Moderador.",
+        "operationId": "listClaims",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de reclamaciones",
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CopyrightClaim" } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/items/{itemId}/claims/{claimId}/resolve": {
+      "put": {
+        "tags": ["Rights"],
+        "summary": "Resolver reclamación (RF-C5)",
+        "description": "**Acceso:** Moderador Legal o Reclamante. **Emite:** `ReclamacionResueltaEvent`.",
+        "operationId": "resolveClaim",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "claimId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ClaimResolvePayload" } }
+          }
+        },
+        "responses": {
+          "202": { "description": "Resolución en proceso." },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/items/{itemId}/restrictions": {
+      "post": {
+        "tags": ["Rights"],
+        "summary": "Aplicar restricciones de contenido (RF-C6)",
+        "description": "**Acceso:** Sistema Interno o Moderador. **Emite:** `RestriccionAplicadaEvent`.",
+        "operationId": "applyRestriction",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RestrictionCreatePayload" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Restricción aplicada",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PolicyRestriction" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" }
+        }
+      },
+      "get": {
+        "tags": ["Rights"],
+        "summary": "Consultar historial de políticas (RF-C6)",
+        "description": "**Acceso:** Propietario del Canal o Moderador.",
+        "operationId": "listRestrictions",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Log de auditoría",
+            "content": {
+              "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PolicyRestriction" } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/items/{itemId}/restrictions/{restrictionId}/status": {
+      "put": {
+        "tags": ["Rights"],
+        "summary": "Levantar o alterar estado de restricción (RF-C6)",
+        "description": "**Acceso:** Sistema Interno o Moderador. **Emite:** `RestriccionLevantadaEvent`.",
+        "operationId": "updateRestrictionStatus",
+        "parameters": [
+          { "name": "itemId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "restrictionId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RestrictionStatusUpdatePayload" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Estado de restricción actualizado." },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "responses": {
+      "ValidationError": {
+        "description": "Datos de entrada inválidos",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "UnauthorizedError": {
+        "description": "Falta token de autenticación o es inválido",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "ForbiddenError": {
+        "description": "Usuario autenticado pero sin permisos suficientes",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "NotFoundError": {
+        "description": "El recurso solicitado no existe",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "InternalError": {
+        "description": "Error inesperado del servidor",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "details": { "type": "array", "items": { "type": "object" } }
+            }
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "categoryId": { "type": "string" },
+          "name": { "type": "string", "example": "Educación" }
+        }
+      },
+      "ChannelProfile": {
+        "type": "object",
+        "properties": {
+          "channelId": { "type": "string" },
+          "ownerId": { "type": "string" },
+          "name": { "type": "string", "maxLength": 50 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "avatarUrl": { "type": "string", "format": "uri" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CatalogItem": {
+        "type": "object",
+        "properties": {
+          "itemId": { "type": "string" },
+          "channelId": { "type": "string" },
+          "technicalAssetId": { "type": "string", "nullable": true },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "categoryId": { "type": "string" },
+          "editorialStatus": { "type": "string", "enum": ["draft", "published", "unlisted"] },
+          "moderationState": { "type": "string", "enum": ["clean", "restricted", "blocked"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "publishedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "Playlist": {
+        "type": "object",
+        "properties": {
+          "playlistId": { "type": "string" },
+          "channelId": { "type": "string" },
+          "title": { "type": "string" },
+          "isPublic": { "type": "boolean" },
+          "itemCount": { "type": "integer" }
+        }
+      },
+      "PolicyRestriction": {
+        "type": "object",
+        "properties": {
+          "restrictionId": { "type": "string" },
+          "restrictionType": { "type": "string", "enum": ["age", "geo", "monetization_limited"] },
+          "parameters": { "type": "object" },
+          "status": { "type": "string", "enum": ["active", "lifted"] },
+          "appliedBy": { "type": "string" },
+          "appliedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CopyrightClaim": {
+        "type": "object",
+        "properties": {
+          "claimId": { "type": "string" },
+          "claimantId": { "type": "string" },
+          "claimType": { "type": "string" },
+          "evidenceUrl": { "type": "string", "format": "uri" },
+          "status": { "type": "string", "enum": ["pending", "accepted", "disputed", "withdrawn"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ChannelCreatePayload": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 3, "maxLength": 50 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "avatarUrl": { "type": "string", "format": "uri" }
+        },
+        "required": ["name"]
+      },
+      "ChannelUpdatePayload": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 3, "maxLength": 50 },
+          "description": { "type": "string", "maxLength": 1000 },
+          "avatarUrl": { "type": "string", "format": "uri" }
+        }
+      },
+      "ItemDraftPayload": {
+        "type": "object",
+        "properties": {
+          "channelId": { "type": "string" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "description": { "type": "string", "maxLength": 5000 },
+          "tags": { "type": "array", "maxItems": 30, "items": { "type": "string", "maxLength": 30 } },
+          "categoryId": { "type": "string" },
+          "thumbnailUrl": { "type": "string", "format": "uri", "nullable": true },
+          "technicalAssetId": { "type": "string", "nullable": true }
+        },
+        "required": ["channelId", "title", "categoryId"]
+      },
+      "ItemUpdatePayload": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "description": { "type": "string", "maxLength": 5000 },
+          "tags": { "type": "array", "maxItems": 30, "items": { "type": "string", "maxLength": 30 } },
+          "thumbnailUrl": { "type": "string", "format": "uri", "nullable": true },
+          "technicalAssetId": { "type": "string" }
+        }
+      },
+      "PlaylistCreatePayload": {
+        "type": "object",
+        "properties": {
+          "channelId": { "type": "string" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "isPublic": { "type": "boolean", "default": true }
+        },
+        "required": ["channelId", "title"]
+      },
+      "PlaylistItemsUpdatePayload": {
+        "type": "object",
+        "properties": {
+          "orderedItemIds": { "type": "array", "maxItems": 5000, "items": { "type": "string" } }
+        },
+        "required": ["orderedItemIds"]
+      },
+      "ClaimCreatePayload": {
+        "type": "object",
+        "properties": {
+          "claimantId": { "type": "string" },
+          "claimType": { "type": "string", "enum": ["copyright", "trademark", "privacy"] },
+          "evidenceUrl": { "type": "string", "format": "uri" }
+        },
+        "required": ["claimantId", "claimType"]
+      },
+      "ClaimResolvePayload": {
+        "type": "object",
+        "properties": {
+          "resolution": { "type": "string", "enum": ["accepted", "disputed", "withdrawn"] }
+        },
+        "required": ["resolution"]
+      },
+      "RestrictionCreatePayload": {
+        "type": "object",
+        "properties": {
+          "restrictionType": { "type": "string", "enum": ["age", "geo", "monetization_limited"] },
+          "parameters": { "type": "object" }
+        },
+        "required": ["restrictionType"]
+      },
+      "RestrictionStatusUpdatePayload": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["active", "lifted"] }
+        },
+        "required": ["status"]
+      },
+      "ContenidoPublicadoEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: Notifica a Descubrimiento, Monetización y Publicidad que el video está visible.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "itemId": { "type": "string" },
+          "channelId": { "type": "string" },
+          "categoryId": { "type": "string" },
+          "technicalAssetId": { "type": "string" }
+        },
+        "required": ["eventId", "timestamp", "itemId", "channelId", "technicalAssetId"]
+      },
+      "ContenidoDespublicadoEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: Instruye remover del índice de búsqueda y detener anuncios.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "itemId": { "type": "string" }
+        },
+        "required": ["eventId", "timestamp", "itemId"]
+      },
+      "ContenidoEliminadoEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: Dispara el borrado físico en API 1 y limpieza en BDs secundarias.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "itemId": { "type": "string" },
+          "technicalAssetId": { "type": "string", "nullable": true }
+        },
+        "required": ["eventId", "timestamp", "itemId"]
+      },
+      "RestriccionAplicadaEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: Notifica un bloqueo a los contextos afectados.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "itemId": { "type": "string" },
+          "restrictionType": { "type": "string" }
+        },
+        "required": ["eventId", "timestamp", "itemId", "restrictionType"]
+      }
+    }
+  }
+}
