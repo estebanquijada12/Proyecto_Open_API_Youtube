@@ -1,0 +1,467 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API de Publicación y Distribución (Contexto 1)",
+    "description": "Gestiona el ciclo de vida técnico del video. \n\n**Integración Asíncrona:** La comunicación con otros contextos no ocurre por HTTP directo, sino mediante un Message Broker utilizando los eventos definidos en la sección de esquemas.",
+    "version": "1.2.0"
+  },
+  "servers": [
+    {
+      "url": "/api/v1/publication"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    { "name": "Upload", "description": "Gestión de subida por partes (RF-P1)" },
+    { "name": "Assets", "description": "Procesamiento y metadatos técnicos (RF-P2, RF-P5)" },
+    { "name": "Playback", "description": "Reproducción y telemetría (RF-P3)" },
+    { "name": "Live", "description": "Transmisiones en vivo (RF-P4)" }
+  ],
+  "paths": {
+    "/assets/upload": {
+      "post": {
+        "tags": ["Upload"],
+        "summary": "Iniciar subida de video (RF-P1)",
+        "description": "**Acceso:** Requiere rol de Creador. Inicia una sesión de subida. \n\n**Regla de Infraestructura (TTL):** Toda sesión inactiva por más de 24 horas (sin recepción de nuevos chunks) será considerada abandonada. Un worker interno purgará físicamente los archivos temporales sin requerir la ejecución explícita del método DELETE.",
+        "operationId": "initiateUpload",
+        "responses": {
+          "201": {
+            "description": "Sesión de subida iniciada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "assetId": { "type": "string" },
+                    "chunkSizeLimitMb": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/assets/{assetId}/upload": {
+      "get": {
+        "tags": ["Upload"],
+        "summary": "Consultar progreso de subida (RF-P1)",
+        "description": "**Acceso:** Propietario del asset.",
+        "operationId": "getUploadProgress",
+        "parameters": [
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado de la carga en curso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "receivedChunks": { "type": "array", "items": { "type": "integer" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      },
+      "delete": {
+        "tags": ["Upload"],
+        "summary": "Cancelar subida en curso (RF-P1)",
+        "description": "**Acceso:** Propietario del asset.",
+        "operationId": "cancelUpload",
+        "parameters": [
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Subida cancelada y almacenamiento liberado" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/assets/{assetId}/chunks/{chunkNumber}": {
+      "put": {
+        "tags": ["Upload"],
+        "summary": "Subir una parte del archivo (RF-P1)",
+        "description": "**Acceso:** Propietario del asset.",
+        "operationId": "uploadChunk",
+        "parameters": [
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "chunkNumber", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+          }
+        },
+        "responses": {
+          "202": { "description": "Chunk recibido y almacenado temporalmente" },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/assets/{assetId}/upload/complete": {
+      "post": {
+        "tags": ["Upload", "Assets"],
+        "summary": "Validar subida y gatillar procesamiento (RF-P1, RF-P2)",
+        "description": "**Acceso:** Propietario del asset. Ensambla los chunks e inicia el transcoding. **Emite:** `ContenidoSubidoCompletamenteEvent`.",
+        "operationId": "completeUpload",
+        "parameters": [
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "202": { "description": "Archivo validado, procesamiento en cola" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/assets": {
+      "get": {
+        "tags": ["Assets"],
+        "summary": "Listar assets técnicos del creador autenticado (RF-P5, RNF-3)",
+        "description": "**Acceso:** Requiere rol de Creador.",
+        "operationId": "listAssets",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 100, "default": 20 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada de assets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/TechnicalAsset" } },
+                    "nextOffset": { "type": "integer", "nullable": true }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/assets/{assetId}": {
+      "get": {
+        "tags": ["Assets"],
+        "summary": "Consultar detalle técnico (RF-P2, RF-P5)",
+        "description": "**Acceso:** Propietario del asset o Sistema Interno.",
+        "operationId": "getAssetDetails",
+        "parameters": [
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado y formatos disponibles",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TechnicalAsset" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/assets/{assetId}/process": {
+      "post": {
+        "tags": ["Assets"],
+        "summary": "Reintentar un procesamiento fallido (RF-P2)",
+        "description": "**Acceso:** Propietario del asset.",
+        "operationId": "retryProcessing",
+        "parameters": [
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "202": { "description": "Procesamiento reiniciado" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/assets/{assetId}/playback": {
+      "get": {
+        "tags": ["Playback"],
+        "summary": "Obtener manifiestos de reproducción (RF-P3, RNF-1)",
+        "description": "**Acceso:** Público (Anónimo o Viewer autenticado).",
+        "security": [],
+        "operationId": "getPlaybackManifests",
+        "parameters": [
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "deviceProfile", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "URLs para HLS/DASH",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "manifestUrl": { "type": "string", "format": "uri" },
+                    "drmToken": { "type": "string", "nullable": true }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/assets/{assetId}/telemetry": {
+      "post": {
+        "tags": ["Playback"],
+        "summary": "Registrar métricas de sesión (Heartbeat) (RF-P3)",
+        "description": "**Acceso:** Público (Anónimo o Viewer autenticado). **Emite:** `SesionReproduccionCompletadaEvent` al recibir la acción 'end'.",
+        "security": [],
+        "operationId": "recordTelemetry",
+        "parameters": [
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/TelemetryPayload" } }
+          }
+        },
+        "responses": {
+          "204": { "description": "Telemetría registrada silenciosamente." },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    },
+    "/lives": {
+      "post": {
+        "tags": ["Live"],
+        "summary": "Configurar una transmisión en vivo (RF-P4)",
+        "description": "**Acceso:** Requiere rol de Creador.",
+        "operationId": "configureLiveStream",
+        "responses": {
+          "201": {
+            "description": "Credenciales generadas",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/LiveStream" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/lives/{liveId}/state": {
+      "put": {
+        "tags": ["Live"],
+        "summary": "Transicionar estado del live (RF-P4)",
+        "description": "**Acceso:** Propietario del Live. **Emite:** `TransmisionEnVivoIniciadaEvent` o `TransmisionEnVivoFinalizadaEvent`.",
+        "operationId": "updateLiveState",
+        "parameters": [
+          { "name": "liveId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/LiveStateTransition" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado actualizado.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/LiveStream" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" },
+          "401": { "$ref": "#/components/responses/UnauthorizedError" },
+          "403": { "$ref": "#/components/responses/ForbiddenError" },
+          "404": { "$ref": "#/components/responses/NotFoundError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "responses": {
+      "ValidationError": {
+        "description": "Datos de entrada inválidos",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "UnauthorizedError": {
+        "description": "Falta token de autenticación o es inválido",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "ForbiddenError": {
+        "description": "Usuario autenticado pero sin permisos suficientes",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "NotFoundError": {
+        "description": "El recurso solicitado no existe",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "InternalError": {
+        "description": "Error inesperado del servidor",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string", "example": "RESOURCE_NOT_FOUND" },
+              "message": { "type": "string", "example": "El asset no existe." },
+              "details": { "type": "array", "items": { "type": "object" } }
+            }
+          }
+        }
+      },
+      "TechnicalAsset": {
+        "type": "object",
+        "properties": {
+          "assetId": { "type": "string" },
+          "uploadStatus": { "type": "string", "enum": ["pending", "uploading", "completed", "cancelled"] },
+          "processingStatus": { "type": "string", "enum": ["pending", "processing", "ready", "failed"] },
+          "durationSeconds": { "type": "integer" },
+          "sizeBytes": { "type": "integer" },
+          "availableQualities": { "type": "array", "items": { "type": "string", "example": "1080p" } }
+        }
+      },
+      "LiveStream": {
+        "type": "object",
+        "properties": {
+          "liveId": { "type": "string" },
+          "streamKey": { "type": "string" },
+          "ingestUrl": { "type": "string", "format": "uri" },
+          "state": { "type": "string", "enum": ["configured", "live", "paused", "ended"] },
+          "vodAssetId": { "type": "string", "nullable": true }
+        }
+      },
+      "TelemetryPayload": {
+        "type": "object",
+        "properties": {
+          "viewerSessionId": { "type": "string" },
+          "eventAction": { "type": "string", "enum": ["start", "heartbeat", "pause", "error", "end"] },
+          "playbackPositionSeconds": { "type": "integer", "minimum": 0 },
+          "currentQuality": { "type": "string" },
+          "bufferingEventsCount": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["viewerSessionId", "eventAction", "playbackPositionSeconds"]
+      },
+      "LiveStateTransition": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "enum": ["start", "pause", "end"] }
+        },
+        "required": ["action"]
+      },
+      "ContenidoSubidoCompletamenteEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: Los chunks han sido ensamblados correctamente.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "assetId": { "type": "string" },
+          "sizeBytes": { "type": "integer" }
+        },
+        "required": ["eventId", "timestamp", "assetId", "sizeBytes"]
+      },
+      "ProcesamientoFinalizadoEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: Notifica el resultado del transcoding.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "assetId": { "type": "string" },
+          "status": { "type": "string", "enum": ["success", "failed"] },
+          "errorReason": { "type": "string", "nullable": true }
+        },
+        "required": ["eventId", "timestamp", "assetId", "status"]
+      },
+      "AssetListoParaPublicacionEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: Notifica al Catálogo que el asset está listo para vincularse editorialmente.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "assetId": { "type": "string" },
+          "durationSeconds": { "type": "integer" },
+          "formats": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["eventId", "timestamp", "assetId", "durationSeconds"]
+      },
+      "SesionReproduccionCompletadaEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: Notifica a Descubrimiento/Audiencia los datos de la sesión consumida.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "assetId": { "type": "string" },
+          "viewerId": { "type": "string", "nullable": true },
+          "totalWatchTimeSeconds": { "type": "integer" }
+        },
+        "required": ["eventId", "timestamp", "assetId", "totalWatchTimeSeconds"]
+      },
+      "TransmisionEnVivoIniciadaEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: El creador ha iniciado el stream en vivo.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "liveId": { "type": "string" },
+          "channelId": { "type": "string" }
+        },
+        "required": ["eventId", "timestamp", "liveId", "channelId"]
+      },
+      "TransmisionEnVivoFinalizadaEvent": {
+        "type": "object",
+        "description": "EVENTO EMITIDO: El live concluyó. Provee el ID del VOD si fue grabado.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "liveId": { "type": "string" },
+          "vodAssetId": { "type": "string", "nullable": true }
+        },
+        "required": ["eventId", "timestamp", "liveId"]
+      },
+      "ContenidoEliminadoEvent": {
+        "type": "object",
+        "description": "EVENTO CONSUMIDO: Escuchado desde el Catálogo. Instruye la purga física de los binarios del disco.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "technicalAssetId": { "type": "string" },
+          "reason": { "type": "string" }
+        },
+        "required": ["eventId", "timestamp", "technicalAssetId"]
+      }
+    }
+  }
+}
