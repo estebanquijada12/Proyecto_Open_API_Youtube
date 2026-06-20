@@ -1,0 +1,854 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API Publicidad y Marketplace B2B",
+    "version": "1.0.0",
+    "description": "Bounded Context de Publicidad y Marketplace para anunciantes.\nResponsable de campañas, inventario, targeting, entrega de anuncios y medición.\n\n**Eventos Emitidos:** IngresoPublicitarioConfirmado.\n\n**Nota de Implementación (Manifiesto IV):** Todo bloque condicional en el backend que valide presupuestos, políticas o brand safety DEBE contar con un `else` explícito para evitar estados inconsistentes."
+  },
+  "servers": [
+    {
+      "url": "https://api.youtube-project.local/v1/advertising"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Anunciantes",
+      "description": "Gestión de cuentas y facturación (RF-F1)"
+    },
+    {
+      "name": "Campañas",
+      "description": "Gestión de campañas publicitarias (RF-F2)"
+    },
+    {
+      "name": "Creativos",
+      "description": "Gestión de assets publicitarios (RF-F3)"
+    },
+    {
+      "name": "Targeting e Inventario",
+      "description": "Estimación de disponibilidad (RF-F4, RF-F5)"
+    },
+    {
+      "name": "Entrega y Medición",
+      "description": "Decisiones de ads y registro de interacciones (RF-F6, RF-F7)"
+    },
+    {
+      "name": "Reportes",
+      "description": "Métricas y facturación (RF-F8)"
+    }
+  ],
+  "paths": {
+    "/account": {
+      "post": {
+        "tags": [
+          "Anunciantes"
+        ],
+        "summary": "Registra una nueva cuenta de anunciante",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvertiserRegistration"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Cuenta creada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvertiserAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Anunciantes"
+        ],
+        "summary": "Obtiene los datos de la cuenta del anunciante",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Datos de la cuenta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvertiserAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/account/billing": {
+      "put": {
+        "tags": [
+          "Anunciantes"
+        ],
+        "summary": "Administra los datos de facturación",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingInfo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Facturación actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/campaigns": {
+      "post": {
+        "tags": [
+          "Campañas"
+        ],
+        "summary": "Crea una nueva campaña",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Campaña creada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvertisingCampaign"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Campañas"
+        ],
+        "summary": "Lista las campañas del anunciante",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "$ref": "#/components/parameters/OffsetParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada de campañas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/campaigns/{campaignId}/status": {
+      "patch": {
+        "tags": [
+          "Campañas"
+        ],
+        "summary": "Cambia el estado de una campaña (Pausar, reanudar, finalizar)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaignId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estado actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvertisingCampaign"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/creatives": {
+      "post": {
+        "tags": [
+          "Creativos"
+        ],
+        "summary": "Sube y registra un creativo publicitario",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreativeCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Creativo registrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdCreative"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Creativos"
+        ],
+        "summary": "Lista creativos del anunciante",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "$ref": "#/components/parameters/OffsetParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada de creativos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreativeList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/campaigns/{campaignId}/creatives": {
+      "post": {
+        "tags": [
+          "Creativos"
+        ],
+        "summary": "Asocia un creativo a una campaña",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaignId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreativeAssociation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Asociación exitosa"
+          }
+        }
+      }
+    },
+    "/inventory/estimate": {
+      "post": {
+        "tags": [
+          "Targeting e Inventario"
+        ],
+        "summary": "Estima el inventario disponible según criterios de segmentación",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetingCriteria"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Estimación de inventario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryEstimate"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/delivery/decide": {
+      "post": {
+        "tags": [
+          "Entrega y Medición"
+        ],
+        "summary": "Decide qué anuncio mostrar ante una oportunidad de visualización",
+        "description": "Invocado por la capa de orquestación o cliente del reproductor. Respeta reglas de brand safety y restricciones del catálogo.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decisión de anuncio tomada (puede ser vacío si no hay ad elegible)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdDecisionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/delivery/interactions": {
+      "post": {
+        "tags": [
+          "Entrega y Medición"
+        ],
+        "summary": "Registra impresiones, clicks o skips",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdInteraction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Interacción registrada para procesamiento asíncrono y cobro"
+          }
+        }
+      }
+    },
+    "/campaigns/{campaignId}/metrics": {
+      "get": {
+        "tags": [
+          "Reportes"
+        ],
+        "summary": "Obtiene métricas de la campaña (impresiones, CTR, CPM, gasto)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaignId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Métricas obtenidas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignMetrics"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/campaigns/{campaignId}/reports": {
+      "post": {
+        "tags": [
+          "Reportes"
+        ],
+        "summary": "Genera un reporte/invoice para el anunciante",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaignId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Reporte en proceso de generación"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "LimitParam": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 20,
+          "minimum": 1
+        }
+      },
+      "OffsetParam": {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Error de sintaxis",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Falta token de autenticación",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Recurso no encontrado",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "AdvertiserRegistration": {
+        "type": "object",
+        "properties": {
+          "companyName": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "type": "string"
+          }
+        }
+      },
+      "AdvertiserAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "BillingInfo": {
+        "type": "object",
+        "properties": {
+          "taxId": {
+            "type": "string"
+          },
+          "billingAddress": {
+            "type": "string"
+          }
+        }
+      },
+      "CampaignCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "budget": {
+            "type": "number"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AdvertisingCampaign": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "PAUSED",
+              "COMPLETED",
+              "BUDGET_EXHAUSTED"
+            ]
+          },
+          "budgetRemaining": {
+            "type": "number"
+          }
+        }
+      },
+      "CampaignList": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/AdvertisingCampaign"
+        }
+      },
+      "CampaignStatusUpdate": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "PAUSED",
+              "COMPLETED"
+            ]
+          }
+        }
+      },
+      "CreativeCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "assetUrl": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "PRE_ROLL",
+              "MID_ROLL",
+              "DISPLAY"
+            ]
+          }
+        }
+      },
+      "AdCreative": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "validationStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ]
+          }
+        }
+      },
+      "CreativeList": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/AdCreative"
+        }
+      },
+      "CreativeAssociation": {
+        "type": "object",
+        "properties": {
+          "creativeId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "TargetingCriteria": {
+        "type": "object",
+        "properties": {
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "minAge": {
+            "type": "integer"
+          },
+          "maxAge": {
+            "type": "integer"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "InventoryEstimate": {
+        "type": "object",
+        "properties": {
+          "estimatedImpressions": {
+            "type": "integer"
+          }
+        }
+      },
+      "AdDecisionRequest": {
+        "type": "object",
+        "properties": {
+          "catalogItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "viewerSignals": {
+            "type": "object"
+          }
+        }
+      },
+      "AdDecisionResponse": {
+        "type": "object",
+        "properties": {
+          "adId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "creativeUrl": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          }
+        }
+      },
+      "AdInteraction": {
+        "type": "object",
+        "properties": {
+          "adId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "interactionType": {
+            "type": "string",
+            "enum": [
+              "IMPRESSION",
+              "CLICK",
+              "SKIP"
+            ]
+          },
+          "catalogItemId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "IngresoPublicitarioConfirmadoEvent": {
+        "type": "object",
+        "description": "Evento emitido por publicidad cuando un gasto publicitario ha sido confirmado para atribuir ingresos al creador.",
+        "properties": {
+          "eventId": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "catalogItemId": { "type": "string", "format": "uuid" },
+          "adId": { "type": "string", "format": "uuid" },
+          "revenueAmount": { "type": "number" },
+          "currency": { "type": "string" }
+        },
+        "required": ["eventId", "timestamp", "catalogItemId", "adId", "revenueAmount", "currency"]
+      },
+      "CampaignMetrics": {
+        "type": "object",
+        "properties": {
+          "impressions": {
+            "type": "integer"
+          },
+          "clicks": {
+            "type": "integer"
+          },
+          "ctr": {
+            "type": "number"
+          },
+          "cpm": {
+            "type": "number"
+          },
+          "totalSpent": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1060 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "API 5 - Monetización del Ecosistema Creador",
+    "version": "1.0.0",
+    "description": "Servicio encargado de gestionar la elegibilidad, configuración de productos, registro de ingresos (revenue share) y pagos para los creadores.\n\n**Eventos Emitidos:** MonetizacionHabilitada, MonetizacionDeshabilitada, IngresoAtribuidoCreador, PagoProcesado.\n**Eventos Consumidos:** IngresoPublicitarioConfirmado, ContenidoPublicado, ContenidoRestringido."
+  },
+  "servers": [
+    {
+      "url": "https://api.youtube-clone.local/v1/monetization"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Alta y Elegibilidad",
+      "description": "Gestión de estado y activación (RF-M1)"
+    },
+    {
+      "name": "Productos del Creador",
+      "description": "Configuración de membresías y propinas (RF-M2)"
+    },
+    {
+      "name": "Ganancias",
+      "description": "Consulta y reportes de ingresos (RF-M4)"
+    },
+    {
+      "name": "Pagos y Fiscalidad",
+      "description": "Saldos, retiro de fondos y documentación (RF-M5)"
+    }
+  ],
+  "paths": {
+    "/me/eligibility": {
+      "get": {
+        "tags": ["Alta y Elegibilidad"],
+        "summary": "Consultar estado de elegibilidad para monetizar",
+        "description": "La identidad del creador se infiere estrictamente del token JWT (Zero Trust).",
+        "responses": {
+          "200": {
+            "description": "Estado de elegibilidad obtenido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EligibilityResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Alta y Elegibilidad"],
+        "summary": "Solicitar ingreso al programa de monetización",
+        "responses": {
+          "202": {
+            "description": "Solicitud recibida para evaluación asíncrona"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictError"
+          }
+        }
+      }
+    },
+    "/me/monetization-settings": {
+      "patch": {
+        "tags": ["Alta y Elegibilidad"],
+        "summary": "Activar o desactivar monetización a nivel canal",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelSettingsPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuración del canal actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelSettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
+    "/catalog-items/{catalogReferenceId}/monetization-settings": {
+      "patch": {
+        "tags": ["Productos del Creador"],
+        "summary": "Configurar monetización y propinas de un ítem de catálogo específico",
+        "parameters": [
+          {
+            "name": "catalogReferenceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemSettingsPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Configuración del ítem actualizada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemSettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
+          }
+        }
+      }
+    },
+    "/me/membership-tiers": {
+      "get": {
+        "tags": ["Productos del Creador"],
+        "summary": "Listar niveles de membresía configurados por el creador",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "$ref": "#/components/parameters/OffsetParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Niveles de membresía obtenidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipTierList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Productos del Creador"],
+        "summary": "Definir un nuevo nivel de membresía",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipTierPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Nivel creado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipTierResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
+    "/me/earnings": {
+      "get": {
+        "tags": ["Ganancias"],
+        "summary": "Consultar desglose de ganancias por periodo con métricas RPM",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "$ref": "#/components/parameters/OffsetParam"
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reporte de ganancias obtenido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EarningList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
+    "/me/earnings/export": {
+      "get": {
+        "tags": ["Ganancias"],
+        "summary": "Generar reportes exportables para el creador",
+        "parameters": [
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CSV",
+                "PDF"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo generado",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinaryFileResponse"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "$ref": "#/components/schemas/BinaryFileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
+    "/me/balance": {
+      "get": {
+        "tags": ["Pagos y Fiscalidad"],
+        "summary": "Obtener saldo disponible y retenido",
+        "responses": {
+          "200": {
+            "description": "Saldos actuales obtenidos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
+    "/me/tax-documents": {
+      "get": {
+        "tags": ["Pagos y Fiscalidad"],
+        "summary": "Listar documentación fiscal registrada",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "$ref": "#/components/parameters/OffsetParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de documentos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxDocumentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Pagos y Fiscalidad"],
+        "summary": "Subir documentación fiscal requerida para cobrar",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaxDocumentPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Documento subido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxDocumentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      }
+    },
+    "/me/payouts": {
+      "get": {
+        "tags": ["Pagos y Fiscalidad"],
+        "summary": "Historial de pagos realizados",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "$ref": "#/components/parameters/OffsetParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Historial de retiros obtenido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Pagos y Fiscalidad"],
+        "summary": "Solicitar retiro de fondos",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayoutPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Solicitud de retiro en proceso"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/ForbiddenError"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "LimitParam": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 20
+        }
+      },
+      "OffsetParam": {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 0
+        }
+      }
+    },
+    "schemas": {
+      "Amount": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "example": "CLP"
+          },
+          "value": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "required": [
+          "currency",
+          "value"
+        ]
+      },
+      "BinaryFileResponse": {
+        "type": "string",
+        "format": "binary"
+      },
+      "EligibilityMetrics": {
+        "type": "object",
+        "properties": {
+          "subscriberCount": {
+            "type": "integer"
+          },
+          "watchHours": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscriberCount",
+          "watchHours"
+        ]
+      },
+      "EligibilityResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "APTO",
+              "PENDIENTE",
+              "RECHAZADO"
+            ]
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/EligibilityMetrics"
+          },
+          "policyCompliance": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "metrics",
+          "policyCompliance"
+        ]
+      },
+      "ChannelSettingsPayload": {
+        "type": "object",
+        "properties": {
+          "isMonetizationEnabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "isMonetizationEnabled"
+        ]
+      },
+      "ChannelSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "channelReferenceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isMonetizationEnabled": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "channelReferenceId",
+          "isMonetizationEnabled",
+          "updatedAt"
+        ]
+      },
+      "ItemSettingsPayload": {
+        "type": "object",
+        "properties": {
+          "isAdsEnabled": {
+            "type": "boolean"
+          },
+          "isTipsEnabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "isAdsEnabled",
+          "isTipsEnabled"
+        ]
+      },
+      "ItemSettingsResponse": {
+        "type": "object",
+        "properties": {
+          "catalogReferenceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isAdsEnabled": {
+            "type": "boolean"
+          },
+          "isTipsEnabled": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "catalogReferenceId",
+          "isAdsEnabled",
+          "isTipsEnabled",
+          "updatedAt"
+        ]
+      },
+      "MembershipTierPayload": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/Amount"
+          },
+          "benefits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "price"
+        ]
+      },
+      "MembershipTierResponse": {
+        "type": "object",
+        "properties": {
+          "tierId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/Amount"
+          },
+          "benefits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "tierId",
+          "name",
+          "price"
+        ]
+      },
+      "MembershipTierList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipTierResponse"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "total"
+        ]
+      },
+      "EarningsMetrics": {
+        "type": "object",
+        "properties": {
+          "monetizedViews": {
+            "type": "integer"
+          },
+          "rpm": {
+            "$ref": "#/components/schemas/Amount",
+            "description": "Revenue Per Mille"
+          }
+        },
+        "required": [
+          "monetizedViews",
+          "rpm"
+        ]
+      },
+      "EarningResponse": {
+        "type": "object",
+        "properties": {
+          "earningId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "catalogReferenceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "AD_REVENUE",
+              "MEMBERSHIP",
+              "TIP"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDIENTE",
+              "CONFIRMADO",
+              "PAGADO"
+            ]
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Amount"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/EarningsMetrics"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "earningId",
+          "source",
+          "status",
+          "amount",
+          "recordedAt"
+        ]
+      },
+      "EarningList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EarningResponse"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "total"
+        ]
+      },
+      "BalanceResponse": {
+        "type": "object",
+        "properties": {
+          "availableBalance": {
+            "$ref": "#/components/schemas/Amount"
+          },
+          "pendingBalance": {
+            "$ref": "#/components/schemas/Amount"
+          },
+          "thresholdReached": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "availableBalance",
+          "pendingBalance",
+          "thresholdReached"
+        ]
+      },
+      "TaxDocumentPayload": {
+        "type": "object",
+        "properties": {
+          "documentType": {
+            "type": "string",
+            "enum": [
+              "W8_BEN",
+              "W9",
+              "RUT",
+              "INVOICE"
+            ]
+          },
+          "fileUrl": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "documentType",
+          "fileUrl"
+        ]
+      },
+      "TaxDocumentResponse": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "documentType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "VERIFIED",
+              "REJECTED"
+            ]
+          },
+          "uploadedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "documentId",
+          "documentType",
+          "status",
+          "uploadedAt"
+        ]
+      },
+      "TaxDocumentList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaxDocumentResponse"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "total"
+        ]
+      },
+      "PayoutPayload": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/Amount"
+          }
+        },
+        "required": [
+          "amount"
+        ]
+      },
+      "PayoutResponse": {
+        "type": "object",
+        "properties": {
+          "payoutId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDIENTE",
+              "PROCESADO",
+              "FALLIDO"
+            ]
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Amount"
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "payoutId",
+          "status",
+          "amount",
+          "requestedAt"
+        ]
+      },
+      "PayoutList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayoutResponse"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset",
+          "total"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      }
+    },
+    "responses": {
+      "BadRequestError": {
+        "description": "Mala sintaxis en la petición (ej. el monto de retiro supera el saldo disponible)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "UnauthorizedError": {
+        "description": "Falta token JWT o firma inválida en bearerAuth",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "ForbiddenError": {
+        "description": "El usuario está autenticado pero no tiene el rol necesario",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFoundError": {
+        "description": "El recurso referenciado (ej. catalogReferenceId) no existe",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "ConflictError": {
+        "description": "Conflicto de estado (ej. solicitud ya enviada, falta documentación fiscal)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    }
+  }
+}

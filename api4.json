@@ -3,7 +3,7 @@
   "info": {
     "title": "API 4 - Audiencia, Comunidad y Engagement",
     "version": "1.0.0",
-    "description": "Servicio encargado de administrar las interacciones sociales del ecosistema: suscripciones, comentarios de múltiples niveles, reacciones agregadas, historial de visualización, preferencias de notificación y posts de comunidad.\n\n**Eventos Emitidos:** SuscripcionCreada, SuscripcionEliminada, ReaccionRegistrada, ComentarioPublicado, ComentarioReportado, PostComunidadPublicado.\n**Eventos Consumidos:** ContenidoPublicado (para gatillar notificaciones), ContenidoRestringido, ContenidoDespublicado (para ocultar o remover interacciones)."
+    "description": "Servicio encargado de administrar las interacciones sociales del ecosistema: suscripciones, comentarios de múltiples niveles, reacciones agregadas, historial de visualización, preferencias de notificación y posts de comunidad.\n\n**Eventos Emitidos:** SuscripcionCreada, SuscripcionEliminada, EngagementRegistrado, ComentarioPublicado, ComentarioReportado, PostComunidadPublicado.\n**Eventos Consumidos:** ContenidoPublicado (para gatillar notificaciones), ContenidoRestringido, ContenidoDespublicado (para ocultar o remover interacciones)."
   },
   "servers": [
     {
