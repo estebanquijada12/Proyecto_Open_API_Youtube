@@ -1,13 +1,14 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "API de Publicación y Distribución (Contexto 1)",
-    "description": "Gestiona el ciclo de vida técnico del video. \n\n**Integración Asíncrona:** La comunicación con otros contextos ocurre mediante un Message Broker. \n\n**Seguridad Interna:** Se asume que el API Gateway valida el Bearer Token e inyecta la cabecera `X-Creator-Id` en las peticiones que llegan a este contexto para la validación de propiedad.",
-    "version": "1.3.0"
+    "title": "API de Publicación y Distribución Audiovisual",
+    "description": "Gestiona el ciclo de vida técnico del contenido en la plataforma. \n\nExpone operaciones síncronas para la carga particionada, transcodificación, telemetría de reproducción y gestión de emisiones en vivo. La arquitectura orientada a eventos (notificaciones al Message Broker) está integrada a nivel de ruta mediante la extensión `x-emitted-events`.\n\n**Autenticación y Red:** Se asume que el API Gateway resuelve los tokens de acceso e inyecta la cabecera `X-Creator-Id` en las peticiones mutables para garantizar la propiedad del asset técnico.",
+    "version": "1.4.0"
   },
   "servers": [
     {
-      "url": "/api/v1/publication"
+      "url": "/api/v1/publication",
+      "description": "Servidor principal de publicación"
     }
   ],
   "security": [
@@ -16,21 +17,24 @@
     }
   ],
   "tags": [
-    { "name": "Upload", "description": "Gestión de subida por partes (RF-P1)" },
-    { "name": "Assets", "description": "Procesamiento y metadatos técnicos (RF-P2, RF-P5)" },
-    { "name": "Playback", "description": "Reproducción y telemetría (RF-P3)" },
-    { "name": "Live", "description": "Transmisiones en vivo (RF-P4)" }
+    { "name": "Upload", "description": "Gestión de sesiones de carga particionada (Multipart Upload)." },
+    { "name": "Assets", "description": "Metadatos técnicos, formatos generados y transcodificación." },
+    { "name": "Playback", "description": "Obtención de manifiestos de streaming y registro analítico." },
+    { "name": "Live", "description": "Aprovisionamiento y control de transmisiones RTMP/HLS en vivo." }
   ],
   "paths": {
     "/assets/upload": {
       "post": {
         "tags": ["Upload"],
-        "summary": "Iniciar subida de video (RF-P1)",
-        "description": "Inicia una sesión de subida. \n\n**Regla de Infraestructura (TTL):** El worker evalúa el campo `lastActivity` de la sesión. Si supera 24h, purga temporales.",
+        "summary": "Iniciar sesión de carga de video",
+        "description": "Crea una nueva sesión para subir un archivo de video en múltiples partes (*chunks*). \n\nDevuelve el límite de tamaño por chunk y un identificador de sesión. \n\n**Nota de infraestructura:** El sistema cuenta con un recolector de basura (*Garbage Collector*) que purga automáticamente los archivos temporales y cancela la sesión si no se detecta actividad (campo `lastActivity`) en un plazo de 24 horas.",
         "operationId": "initiateUpload",
+        "parameters": [
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
+        ],
         "responses": {
           "201": {
-            "description": "Sesión de subida iniciada",
+            "description": "Sesión de subida iniciada correctamente.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/UploadSession" }
@@ -45,15 +49,16 @@
     "/assets/{assetId}/upload": {
       "get": {
         "tags": ["Upload"],
-        "summary": "Consultar progreso de subida (RF-P1)",
-        "description": "Requiere que `X-Creator-Id` coincida con el propietario.",
+        "summary": "Consultar progreso de la carga",
+        "description": "Devuelve el estado actual de la sesión de subida. \n\nEs especialmente útil para reanudar cargas interrumpidas, ya que el arreglo `receivedChunks` indica exactamente qué bloques ya han sido almacenados de forma segura en el servidor, permitiendo al cliente enviar únicamente los bloques faltantes.",
         "operationId": "getUploadProgress",
         "parameters": [
-          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Identificador único del asset técnico." },
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
         ],
         "responses": {
           "200": {
-            "description": "Estado de la sesión",
+            "description": "Estado detallado de la sesión de subida.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/UploadSession" }
@@ -67,13 +72,15 @@
       },
       "delete": {
         "tags": ["Upload"],
-        "summary": "Cancelar subida en curso (RF-P1)",
+        "summary": "Cancelar carga en curso",
+        "description": "Aborta explícitamente una sesión de subida antes de su finalización. \n\nEsta acción es destructiva e irreversible. Purga inmediatamente todos los temporales asociados en el sistema de almacenamiento subyacente y libera el identificador del asset.",
         "operationId": "cancelUpload",
         "parameters": [
-          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
         ],
         "responses": {
-          "204": { "description": "Subida cancelada y almacenamiento liberado" },
+          "204": { "description": "Sesión cancelada y espacio de almacenamiento liberado con éxito." },
           "401": { "$ref": "#/components/responses/UnauthorizedError" },
           "403": { "$ref": "#/components/responses/ForbiddenError" },
           "404": { "$ref": "#/components/responses/NotFoundError" }
@@ -83,19 +90,25 @@
     "/assets/{assetId}/chunks/{chunkNumber}": {
       "put": {
         "tags": ["Upload"],
-        "summary": "Subir una parte del archivo (RF-P1)",
+        "summary": "Transmitir un bloque de datos",
+        "description": "Recibe un fragmento binario del archivo de video. \n\nEl sistema acepta fragmentos enviados en paralelo. Cada subida exitosa actualiza la marca de tiempo `lastActivity` de la sesión, reiniciando el contador del TTL de 24 horas.",
         "operationId": "uploadChunk",
         "parameters": [
           { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "chunkNumber", "in": "path", "required": true, "schema": { "type": "integer" } }
+          { "name": "chunkNumber", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Índice secuencial del bloque (comenzando en 1)." },
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
         ],
         "requestBody": {
+          "required": true,
           "content": {
-            "application/octet-stream": { "schema": { "type": "string", "format": "binary" } }
+            "application/octet-stream": { 
+              "schema": { "type": "string", "format": "binary" },
+              "description": "Carga útil binaria del fragmento de video."
+            }
           }
         },
         "responses": {
-          "202": { "description": "Chunk recibido, actualiza lastActivity" },
+          "202": { "description": "Fragmento recibido y almacenado en caché." },
           "400": { "$ref": "#/components/responses/ValidationError" },
           "401": { "$ref": "#/components/responses/UnauthorizedError" },
           "403": { "$ref": "#/components/responses/ForbiddenError" },
@@ -106,14 +119,20 @@
     "/assets/{assetId}/upload/complete": {
       "post": {
         "tags": ["Upload", "Assets"],
-        "summary": "Validar subida y gatillar procesamiento",
-        "description": "**Emite:** `ContenidoSubidoCompletamenteEvent`.",
+        "summary": "Ensamblar archivo y procesar",
+        "description": "Sella la sesión de carga. \n\nEl backend verifica la integridad de todos los fragmentos recibidos, ensambla el archivo final y lo encola en los *workers* de transcodificación para generar las distintas resoluciones (HLS/DASH).",
         "operationId": "completeUpload",
+        "x-emitted-events": [
+          { "$ref": "#/components/schemas/EventContenidoSubidoCompletamente" },
+          { "$ref": "#/components/schemas/EventProcesamientoFinalizado" },
+          { "$ref": "#/components/schemas/EventAssetListoParaPublicacion" }
+        ],
         "parameters": [
-          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
         ],
         "responses": {
-          "202": { "description": "Archivo validado, procesamiento en cola" },
+          "202": { "description": "Archivo ensamblado correctamente. El procesamiento ha comenzado en segundo plano." },
           "401": { "$ref": "#/components/responses/UnauthorizedError" },
           "403": { "$ref": "#/components/responses/ForbiddenError" },
           "422": { "$ref": "#/components/responses/ValidationError" }
@@ -123,22 +142,24 @@
     "/assets": {
       "get": {
         "tags": ["Assets"],
-        "summary": "Listar assets técnicos del creador autenticado",
+        "summary": "Listar inventario técnico del creador",
+        "description": "Recupera una lista paginada de todos los assets de video técnicos que pertenecen al usuario autenticado. \n\nNo incluye metadatos editoriales (títulos o descripciones), únicamente información estructural como tamaños, estado de codificación y duraciones exactas.",
         "operationId": "listAssets",
         "parameters": [
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 100, "default": 20 } },
-          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 100, "default": 20 }, "description": "Cantidad máxima de resultados por página." },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 }, "description": "Puntero de paginación para omitir los primeros N resultados." },
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
         ],
         "responses": {
           "200": {
-            "description": "Lista paginada",
+            "description": "Inventario de assets retornado con éxito.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "data": { "type": "array", "items": { "$ref": "#/components/schemas/TechnicalAsset" } },
-                    "nextOffset": { "type": "integer", "nullable": true }
+                    "nextOffset": { "type": "integer", "nullable": true, "description": "Puntero para la siguiente página. Null si es el final." }
                   }
                 }
               }
@@ -152,14 +173,16 @@
     "/assets/{assetId}": {
       "get": {
         "tags": ["Assets"],
-        "summary": "Consultar detalle técnico",
+        "summary": "Consultar estado técnico de un asset",
+        "description": "Devuelve la radiografía completa de un archivo de video específico. \n\nUtilizado habitualmente por las interfaces de *Studio* o paneles de control para mostrar al creador qué resoluciones (`availableQualities`) ya han terminado de procesarse y cuáles siguen pendientes.",
         "operationId": "getAssetDetails",
         "parameters": [
-          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
         ],
         "responses": {
           "200": {
-            "description": "Detalle del asset",
+            "description": "Propiedades técnicas del asset recuperadas.",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/TechnicalAsset" } }
             }
@@ -173,13 +196,19 @@
     "/assets/{assetId}/process": {
       "post": {
         "tags": ["Assets"],
-        "summary": "Reintentar procesamiento fallido",
+        "summary": "Forzar reintento de transcodificación",
+        "description": "Si un asset queda en estado `failed` debido a un error de infraestructura durante la conversión de formatos, este endpoint permite reintroducir el video en la cola de trabajo de los codificadores sin obligar al usuario a subir el archivo original de nuevo.",
         "operationId": "retryProcessing",
+        "x-emitted-events": [
+          { "$ref": "#/components/schemas/EventProcesamientoFinalizado" },
+          { "$ref": "#/components/schemas/EventAssetListoParaPublicacion" }
+        ],
         "parameters": [
-          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
         ],
         "responses": {
-          "202": { "description": "Procesamiento reiniciado" },
+          "202": { "description": "Trabajo de codificación relanzado exitosamente." },
           "401": { "$ref": "#/components/responses/UnauthorizedError" },
           "403": { "$ref": "#/components/responses/ForbiddenError" },
           "404": { "$ref": "#/components/responses/NotFoundError" }
@@ -189,28 +218,32 @@
     "/assets/{assetId}/playback": {
       "get": {
         "tags": ["Playback"],
-        "summary": "Obtener manifiestos de reproducción",
+        "summary": "Solicitar URLs de reproducción adaptativa",
+        "description": "Resuelve la ubicación de los manifiestos de video (HLS/DASH) preparados para el streaming adaptativo. \n\n**Seguridad:** Este endpoint está abierto a tráfico anónimo, pero exige de manera estricta un `playbackToken` emitido por el servicio de autorización central. Este token tiene una vida útil corta, lo que garantiza que si un video es bloqueado a nivel de sistema, los reproductores perderán el acceso en la próxima actualización del manifiesto.",
         "security": [],
         "operationId": "getPlaybackManifests",
         "parameters": [
           { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } },
-          { "name": "deviceProfile", "in": "query", "schema": { "type": "string" } }
+          { "name": "playbackToken", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Firma criptográfica efímera que valida que el espectador tiene derecho de reproducción." },
+          { "name": "deviceProfile", "in": "query", "schema": { "type": "string" }, "description": "Opcional. Indica el tipo de dispositivo (mobile, tv, web) para entregar el codec más óptimo." },
+          { "name": "X-Viewer-Id", "in": "header", "required": false, "schema": { "type": "string" }, "description": "Identidad opcional del espectador inyectada por el Gateway para vincular la sesión analítica." }
         ],
         "responses": {
           "200": {
-            "description": "URLs para HLS/DASH",
+            "description": "URLs maestras generadas correctamente.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "manifestUrl": { "type": "string", "format": "uri" },
-                    "drmToken": { "type": "string", "nullable": true }
+                    "manifestUrl": { "type": "string", "format": "uri", "description": "URL principal del archivo .m3u8 o .mpd." },
+                    "drmToken": { "type": "string", "nullable": true, "description": "Licencia adjunta si el contenido está cifrado." }
                   }
                 }
               }
             }
           },
+          "400": { "$ref": "#/components/responses/ValidationError" },
           "404": { "$ref": "#/components/responses/NotFoundError" }
         }
       }
@@ -218,20 +251,24 @@
     "/assets/{assetId}/telemetry": {
       "post": {
         "tags": ["Playback"],
-        "summary": "Registrar métricas de sesión",
-        "description": "**Emite:** `SesionReproduccionCompletadaEvent` al recibir la acción 'end'.",
+        "summary": "Ingestar métricas del reproductor",
+        "description": "Recibe eventos analíticos desde los clientes de video (latencia, buffering, cambios de calidad y tiempo de visualización real). \n\n**Nota de Arquitectura:** Las peticiones a este endpoint deben ser extremadamente ligeras. Actúa como puente para emitir el evento `EventSesionReproduccionCompletada` al finalizar la visualización, alimentando los motores de recomendación y monetización.",
         "security": [],
         "operationId": "recordTelemetry",
+        "x-emitted-events": [
+          { "$ref": "#/components/schemas/EventSesionReproduccionCompletada" }
+        ],
         "parameters": [
           { "name": "assetId", "in": "path", "required": true, "schema": { "type": "string" } }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": { "schema": { "$ref": "#/components/schemas/TelemetryPayload" } }
           }
         },
         "responses": {
-          "204": { "description": "Telemetría registrada" },
+          "204": { "description": "Punto de datos ingerido silenciosamente (sin cuerpo de respuesta)." },
           "400": { "$ref": "#/components/responses/ValidationError" },
           "404": { "$ref": "#/components/responses/NotFoundError" }
         }
@@ -240,11 +277,15 @@
     "/lives": {
       "post": {
         "tags": ["Live"],
-        "summary": "Configurar una transmisión en vivo",
+        "summary": "Aprovisionar canal de transmisión",
+        "description": "Reserva recursos en los servidores de *ingest* de video y genera las credenciales privadas (URL de ingesta y *Stream Key*) que el creador debe introducir en su software de emisión (como OBS Studio).",
         "operationId": "configureLiveStream",
+        "parameters": [
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
+        ],
         "responses": {
           "201": {
-            "description": "Credenciales generadas",
+            "description": "Canal aprovisionado y listo para recibir bytes.",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/LiveStream" } }
             }
@@ -257,20 +298,26 @@
     "/lives/{liveId}/state": {
       "put": {
         "tags": ["Live"],
-        "summary": "Transicionar estado del live",
-        "description": "**Emite:** `TransmisionEnVivoIniciadaEvent` o `TransmisionEnVivoFinalizadaEvent`.",
+        "summary": "Transicionar estado del stream en vivo",
+        "description": "Maneja la máquina de estados de una emisión. \n\nPermite iniciar formalmente el evento, pausarlo (mostrando cortinillas estáticas) o finalizarlo de manera definitiva. La acción `end` corta el flujo RTMP de entrada y desencadena automáticamente la generación de un video bajo demanda (VOD) basado en la grabación de la emisión.",
         "operationId": "updateLiveState",
+        "x-emitted-events": [
+          { "$ref": "#/components/schemas/EventTransmisionEnVivoIniciada" },
+          { "$ref": "#/components/schemas/EventTransmisionEnVivoFinalizada" }
+        ],
         "parameters": [
-          { "name": "liveId", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "liveId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/CreatorIdHeader" }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": { "schema": { "$ref": "#/components/schemas/LiveStateTransition" } }
           }
         },
         "responses": {
           "200": {
-            "description": "Estado actualizado",
+            "description": "La transición de estado se ha aplicado en los servidores de streaming.",
             "content": {
               "application/json": { "schema": { "$ref": "#/components/schemas/LiveStream" } }
             }
@@ -285,27 +332,36 @@
   },
   "components": {
     "securitySchemes": {
-      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "Token JWT provisto por el proveedor de identidad corporativo." }
+    },
+    "parameters": {
+      "CreatorIdHeader": {
+        "name": "X-Creator-Id",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Cabecera de identidad segura inyectada por la capa de red tras validar la autenticidad de la petición."
+      }
     },
     "responses": {
       "ValidationError": {
-        "description": "Datos de entrada inválidos",
+        "description": "Infracción de reglas de negocio o tokens criptográficos expirados.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "UnauthorizedError": {
-        "description": "Falta token de autenticación o es inválido",
+        "description": "Ausencia de prueba de identidad o firma rechazada.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "ForbiddenError": {
-        "description": "Usuario autenticado pero sin permisos",
+        "description": "Identidad validada, pero carece de privilegios sobre el recurso solicitado.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "NotFoundError": {
-        "description": "El recurso no existe",
+        "description": "El asset técnico o el canal en vivo referenciado no existe en la persistencia.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       },
       "InternalError": {
-        "description": "Error del servidor",
+        "description": "Colapso del worker, timeout en la base de datos o error inesperado del clúster.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
       }
     },
@@ -318,8 +374,8 @@
             "type": "object",
             "required": ["code", "message"],
             "properties": {
-              "code": { "type": "string" },
-              "message": { "type": "string" },
+              "code": { "type": "string", "example": "ERR_INVALID_STATE" },
+              "message": { "type": "string", "example": "La transición solicitada no es válida." },
               "details": { "type": "array", "items": { "type": "object" } }
             }
           }
@@ -328,13 +384,13 @@
       "TechnicalAsset": {
         "type": "object",
         "properties": {
-          "assetId": { "type": "string" },
-          "creatorId": { "type": "string", "description": "ID del dueño para validación de permisos" },
+          "assetId": { "type": "string", "format": "uuid" },
+          "creatorId": { "type": "string" },
           "uploadStatus": { "type": "string", "enum": ["pending", "uploading", "completed", "cancelled"] },
           "processingStatus": { "type": "string", "enum": ["pending", "processing", "ready", "failed"] },
-          "durationSeconds": { "type": "integer" },
+          "durationSeconds": { "type": "integer", "description": "Longitud temporal del archivo de medios." },
           "sizeBytes": { "type": "integer" },
-          "availableQualities": { "type": "array", "items": { "type": "string" } }
+          "availableQualities": { "type": "array", "items": { "type": "string" }, "example": ["360p", "720p", "1080p"] }
         }
       },
       "UploadSession": {
@@ -343,7 +399,7 @@
           "assetId": { "type": "string" },
           "chunkSizeLimitMb": { "type": "integer" },
           "receivedChunks": { "type": "array", "items": { "type": "integer" } },
-          "lastActivity": { "type": "string", "format": "date-time", "description": "Control de inactividad para el TTL de 24h" }
+          "lastActivity": { "type": "string", "format": "date-time" }
         }
       },
       "LiveStream": {
@@ -351,10 +407,10 @@
         "properties": {
           "liveId": { "type": "string" },
           "creatorId": { "type": "string" },
-          "streamKey": { "type": "string" },
-          "ingestUrl": { "type": "string", "format": "uri" },
+          "streamKey": { "type": "string", "description": "Clave privada que el creador debe mantener oculta." },
+          "ingestUrl": { "type": "string", "format": "uri", "example": "rtmp://ingest.server.local/live" },
           "state": { "type": "string", "enum": ["configured", "live", "paused", "ended"] },
-          "vodAssetId": { "type": "string", "nullable": true }
+          "vodAssetId": { "type": "string", "nullable": true, "description": "Se puebla automáticamente tras enviar la acción de 'end'." }
         }
       },
       "TelemetryPayload": {
@@ -375,8 +431,9 @@
         },
         "required": ["action"]
       },
-      "ContenidoSubidoCompletamenteEvent": {
+      "EventContenidoSubidoCompletamente": {
         "type": "object",
+        "description": "Carga útil del mensaje enviado al Broker cuando el último chunk es ensamblado.",
         "properties": {
           "eventId": { "type": "string" },
           "timestamp": { "type": "string", "format": "date-time" },
@@ -386,8 +443,9 @@
         },
         "required": ["eventId", "timestamp", "assetId", "creatorId"]
       },
-      "ProcesamientoFinalizadoEvent": {
+      "EventProcesamientoFinalizado": {
         "type": "object",
+        "description": "Carga útil del mensaje enviado al Broker cuando el servicio de FFmpeg finaliza.",
         "properties": {
           "eventId": { "type": "string" },
           "timestamp": { "type": "string", "format": "date-time" },
@@ -397,9 +455,9 @@
         },
         "required": ["eventId", "timestamp", "assetId", "status"]
       },
-      "AssetListoParaPublicacionEvent": {
+      "EventAssetListoParaPublicacion": {
         "type": "object",
-        "description": "Provee el creatorId al Catálogo para vincular la autoría.",
+        "description": "Carga útil del mensaje enviado al Broker dirigido a los módulos de Catálogo y Búsqueda.",
         "properties": {
           "eventId": { "type": "string" },
           "timestamp": { "type": "string", "format": "date-time" },
@@ -410,8 +468,9 @@
         },
         "required": ["eventId", "timestamp", "assetId", "creatorId", "durationSeconds"]
       },
-      "SesionReproduccionCompletadaEvent": {
+      "EventSesionReproduccionCompletada": {
         "type": "object",
+        "description": "Carga útil del mensaje enviado al Broker con los datos agregados de una sesión de visionado.",
         "properties": {
           "eventId": { "type": "string" },
           "timestamp": { "type": "string", "format": "date-time" },
@@ -421,8 +480,9 @@
         },
         "required": ["eventId", "timestamp", "assetId", "totalWatchTimeSeconds"]
       },
-      "TransmisionEnVivoIniciadaEvent": {
+      "EventTransmisionEnVivoIniciada": {
         "type": "object",
+        "description": "Carga útil del mensaje emitido para notificar a los suscriptores y la UI.",
         "properties": {
           "eventId": { "type": "string" },
           "timestamp": { "type": "string", "format": "date-time" },
@@ -431,8 +491,9 @@
         },
         "required": ["eventId", "timestamp", "liveId", "creatorId"]
       },
-      "TransmisionEnVivoFinalizadaEvent": {
+      "EventTransmisionEnVivoFinalizada": {
         "type": "object",
+        "description": "Carga útil del mensaje emitido al apagar el flujo de entrada RTMP.",
         "properties": {
           "eventId": { "type": "string" },
           "timestamp": { "type": "string", "format": "date-time" },
@@ -440,16 +501,6 @@
           "vodAssetId": { "type": "string", "nullable": true }
         },
         "required": ["eventId", "timestamp", "liveId"]
-      },
-      "ContenidoEliminadoEvent": {
-        "type": "object",
-        "properties": {
-          "eventId": { "type": "string" },
-          "timestamp": { "type": "string", "format": "date-time" },
-          "technicalAssetId": { "type": "string" },
-          "reason": { "type": "string" }
-        },
-        "required": ["eventId", "timestamp", "technicalAssetId"]
       }
     }
   }
