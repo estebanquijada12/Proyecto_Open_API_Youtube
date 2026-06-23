@@ -16,14 +16,11 @@
     }
   ],
   "paths": {
-    
     "/feed/home" : {
       "x-scope": "Sí: home feed",
-      
       "get": {
         "summary": "Obtiene el feed personalizado del usuario",
         "description": "Retorna una lista paginada de DiscoveryItems recomendados. La identidad del usuario se infiere exclusivamente del token JWT.",
-
         "parameters": [
           { "$ref": "#/components/parameters/LimitParam" },
           { "$ref": "#/components/parameters/OffsetParam" }
@@ -46,7 +43,6 @@
       "get": {
         "summary": "Busca contenido indexado (videos y canales)",
         "description": "Permite realizar búsquedas por texto libre aplicando filtros técnicos y ordenamientos específicos.",
-
         "parameters": [
           {
             "name": "q",
@@ -94,7 +90,6 @@
       "get": {
         "summary": "Obtiene sugerencias de búsqueda en tiempo real",
         "description": "Devuelve términos de búsqueda sugeridos basados en caracteres parciales.",
-
         "parameters": [
           {
             "name": "q",
@@ -121,7 +116,6 @@
       "get": {
         "summary": "Obtiene contenido relacionado",
         "description": "Retorna ítems de catálogo similares basados en temáticas, historial y engagement del contexto.",
-
         "parameters": [
           {
             "name": "catalogReferenceId",
@@ -151,7 +145,6 @@
       "get": {
         "summary": "Expone el contenido en tendencia",
         "description": "Calcula y segmenta los videos con mayor aceleración de engagement por región geográfica o categoría.",
-
         "parameters": [
           {
             "name": "region",
@@ -182,7 +175,6 @@
         }
       }
     },
-
     "/categories": {
       "x-scope": "Sí: explorar por categoría",
       "get": {
@@ -200,7 +192,6 @@
         }
       }
     },
-
     "/categories/{categoryId}/items": {
       "x-scope": "Sí: explorar por categoría",
       "get": {
@@ -229,13 +220,11 @@
         }
       }
     },
-    
     "/signals": {
       "x-scope": "Sí: señales de ranking",
       "post": {
         "summary": "Registra una señal de telemetría e interés",
         "description": "Captura impresiones, clicks o tiempo de visualización. Emite de forma asíncrona el evento SenalInteresRegistrada.",
-
         "requestBody": {
           "required": true,
           "content": {
@@ -344,11 +333,27 @@
       },
       "ErrorResponse": {
         "type": "object",
+        "required": ["error"],
         "properties": {
-          "code": { "type": "string" },
-          "message": { "type": "string" }
-        },
-        "required": ["code", "message"]
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "responses": {
