@@ -2,8 +2,8 @@
   "openapi": "3.0.0",
   "info": {
     "title": "API 5 - Monetización del Ecosistema Creador",
-    "version": "1.0.0",
-    "description": "Servicio encargado de gestionar la elegibilidad, configuración de productos, registro de ingresos (revenue share) y pagos para los creadores.\n\n**Eventos Emitidos:** MonetizacionHabilitada, MonetizacionDeshabilitada, IngresoAtribuidoCreador, PagoProcesado.\n**Eventos Consumidos:** IngresoPublicitarioConfirmado, ContenidoPublicado, ContenidoRestringido."
+    "version": "1.1.0",
+    "description": "Servicio encargado de gestionar la elegibilidad, configuración de productos, registro de ingresos (revenue share) y pagos para los creadores.\n\n**Eventos Emitidos:** EventMonetizacionHabilitada, EventMonetizacionDeshabilitada, EventIngresoAtribuidoCreador, EventPagoProcesado.\n**Eventos Consumidos:** EventIngresoPublicitarioConfirmado, EventContenidoPublicado, EventContenidoRestringido."
   },
   "servers": [
     {
@@ -471,6 +471,11 @@
       "post": {
         "tags": ["Pagos y Fiscalidad"],
         "summary": "Solicitar retiro de fondos",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -527,6 +532,16 @@
           "type": "integer",
           "default": 0
         }
+      },
+      "IdempotencyKeyHeader": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "description": "Clave única para garantizar que la solicitud de retiro se procese exactamente una vez, evitando pagos duplicados por reintentos de red."
       }
     },
     "schemas": {
@@ -1057,4 +1072,5 @@
       }
     }
   }
+}
 }
