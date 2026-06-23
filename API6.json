@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "API Publicidad y Marketplace B2B",
-    "version": "1.0.0",
-    "description": "Bounded Context de Publicidad y Marketplace para anunciantes.\nResponsable de campañas, inventario, targeting, entrega de anuncios y medición.\n\n**Eventos Emitidos:** IngresoPublicitarioConfirmado.\n\n**Nota de Implementación (Manifiesto IV):** Todo bloque condicional en el backend que valide presupuestos, políticas o brand safety DEBE contar con un `else` explícito para evitar estados inconsistentes."
+    "version": "1.1.0",
+    "description": "Bounded Context de Publicidad y Marketplace para anunciantes.\nResponsable de campañas, inventario, targeting, entrega de anuncios y medición.\n\n**Eventos Emitidos:** EventIngresoPublicitarioConfirmado.\n\n**Nota de Implementación (Manifiesto IV):** Todo bloque condicional en el backend que valide presupuestos, políticas o brand safety DEBE contar con un `else` explícito para evitar estados inconsistentes."
   },
   "servers": [
     {
@@ -239,10 +239,10 @@
                 }
               }
             }
-          },
-          "404": {
-            "$ref": "#/components/responses/NotFound"
           }
+        },
+        "404": {
+          "$ref": "#/components/responses/NotFound"
         }
       }
     },
@@ -392,7 +392,7 @@
           "Entrega y Medición"
         ],
         "summary": "Decide qué anuncio mostrar ante una oportunidad de visualización",
-        "description": "Invocado por la capa de orquestación o cliente del reproductor. Respeta reglas de brand safety y restricciones del catálogo.",
+        "description": "Invocado por la capa de orquestación o cliente del reproductor. Realiza una **consulta síncrona** a la API 2 (GET /items/{catalogItemId}/visibility) para garantizar que el contenido siga siendo visible y elegible. Respeta reglas de brand safety y restricciones del catálogo.",
         "requestBody": {
           "required": true,
           "content": {
@@ -423,6 +423,11 @@
           "Entrega y Medición"
         ],
         "summary": "Registra impresiones, clicks o skips",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -534,6 +539,16 @@
           "default": 0,
           "minimum": 0
         }
+      },
+      "IdempotencyKeyHeader": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "description": "Clave única para evitar el doble cobro de una misma interacción o duplicidad de transacciones ante reintentos de red."
       }
     },
     "responses": {
@@ -816,7 +831,7 @@
           }
         }
       },
-      "IngresoPublicitarioConfirmadoEvent": {
+      "EventIngresoPublicitarioConfirmado": {
         "type": "object",
         "description": "Evento emitido por publicidad cuando un gasto publicitario ha sido confirmado para atribuir ingresos al creador.",
         "properties": {
