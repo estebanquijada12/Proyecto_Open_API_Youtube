@@ -239,10 +239,10 @@
                 }
               }
             }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
-        },
-        "404": {
-          "$ref": "#/components/responses/NotFound"
         }
       }
     },
@@ -586,12 +586,25 @@
     "schemas": {
       "ErrorResponse": {
         "type": "object",
+        "required": ["error"],
         "properties": {
-          "code": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       },
