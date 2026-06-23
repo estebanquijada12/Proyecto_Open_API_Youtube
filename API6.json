@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "API Publicidad y Marketplace B2B",
+    "title": "API 6 Publicidad y Marketplace B2B",
     "version": "1.1.0",
     "description": "Bounded Context de Publicidad y Marketplace para anunciantes.\nResponsable de campañas, inventario, targeting, entrega de anuncios y medición.\n\n**Eventos Emitidos:** EventIngresoPublicitarioConfirmado.\n\n**Nota de Implementación (Manifiesto IV):** Todo bloque condicional en el backend que valide presupuestos, políticas o brand safety DEBE contar con un `else` explícito para evitar estados inconsistentes."
   },
